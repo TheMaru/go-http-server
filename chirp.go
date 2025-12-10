@@ -11,7 +11,7 @@ func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
 		Body string `json:"body"`
 	}
 	type sucRes struct {
-		Valid bool `json:"valid"`
+		CleanedBody string `json:"cleaned_body"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -27,5 +27,5 @@ func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, sucRes{Valid: true})
+	respondWithJSON(w, http.StatusOK, sucRes{CleanedBody: filterProfanity(params.Body)})
 }
