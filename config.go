@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"sync/atomic"
 
@@ -33,8 +35,23 @@ func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) resetHitsHandler(w http.ResponseWriter, r *http.Request) {
-	cfg.fileserverHits.Store(0)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+	platform := os.Getenv("PLATFORM")
+
+	if platform != "dev" {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("Forbidden"))
+		return
+	}
+
+	cfg.fileserverHits.Store(0)
+
+	err := cfg.dbQueries.DeleteAllUsers(context.Background())
+	if err != nil {
+		log.Printf("DeleteAllUsers encountered a db error: %v\n", err)
+	}
+
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
 }
