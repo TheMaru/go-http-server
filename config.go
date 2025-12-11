@@ -6,10 +6,13 @@ import (
 	"net/http"
 	"strconv"
 	"sync/atomic"
+
+	"github.com/TheMaru/go-http-server/internal/database"
 )
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	dbQueries      *database.Queries
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
