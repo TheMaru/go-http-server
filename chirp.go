@@ -1,17 +1,29 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
+
+	"github.com/TheMaru/go-http-server/internal/database"
+	"github.com/google/uuid"
 )
 
-func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request) {
 	const maxChirpLength = 140
+
 	type parameters struct {
-		Body string `json:"body"`
+		Body   string    `json:"body"`
+		UserId uuid.UUID `json:"user_id"`
 	}
-	type sucRes struct {
-		CleanedBody string `json:"cleaned_body"`
+
+	type chirpCreationResp struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -27,5 +39,23 @@ func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, sucRes{CleanedBody: filterProfanity(params.Body)})
+	chirpParams := database.CreateChirpParams{
+		Body:   filterProfanity(params.Body),
+		UserID: params.UserId,
+	}
+
+	chirp, err := cfg.dbQueries.CreateChirp(context.Background(), chirpParams)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Chirp could not be created", nil)
+	}
+
+	chirpRes := chirpCreationResp{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
+	}
+
+	respondWithJSON(w, http.StatusCreated, chirpRes)
 }
