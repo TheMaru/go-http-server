@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/TheMaru/go-http-server/internal/auth"
 	"github.com/TheMaru/go-http-server/internal/database"
 	"github.com/google/uuid"
 )
@@ -21,14 +22,22 @@ type chirpResp struct {
 func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request) {
 	const maxChirpLength = 140
 
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "not logged in", err)
+	}
+
+	uuid, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "invalid token", err)
+	}
 	type parameters struct {
-		Body   string    `json:"body"`
-		UserId uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
 		return
@@ -41,7 +50,7 @@ func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request)
 
 	chirpParams := database.CreateChirpParams{
 		Body:   filterProfanity(params.Body),
-		UserID: params.UserId,
+		UserID: uuid,
 	}
 
 	chirp, err := cfg.dbQueries.CreateChirp(context.Background(), chirpParams)

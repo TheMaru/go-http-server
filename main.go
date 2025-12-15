@@ -25,6 +25,7 @@ func main() {
 	mux := http.NewServeMux()
 	apiCfg := apiConfig{
 		dbQueries: database.New(db),
+		secret:    os.Getenv("SECRET"),
 	}
 
 	server := &http.Server{
