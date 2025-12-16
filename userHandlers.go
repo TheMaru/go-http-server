@@ -13,11 +13,12 @@ import (
 )
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
-	Token     string    `json:"token"`
+	ID           uuid.UUID `json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Email        string    `json:"email"`
+	Token        string    `json:"token"`
+	RefreshToken string    `json:"refresh_token"`
 }
 
 func (cfg *apiConfig) addUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -64,9 +65,8 @@ func (cfg *apiConfig) addUserHandler(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Password         string `json:"password"`
-		Email            string `json:"email"`
-		ExpiresInSeconds int64  `json:"expires_in_seconds"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -91,24 +91,78 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	if isCorrectPW {
 		expirationDuration := time.Duration(1) * time.Hour
-		requestedDuration := time.Duration(params.ExpiresInSeconds) * time.Hour
-		if requestedDuration != 0 && requestedDuration < expirationDuration {
-			expirationDuration = requestedDuration
-		}
 
 		token, err := auth.MakeJWT(dbUser.ID, cfg.secret, expirationDuration)
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Couldn't generate JWT", err)
 		}
 
+		refreshToken, err := auth.MakeRefreshToken()
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't generate refresh token", err)
+		}
+
+		refreshTokenParams := database.CreateRefreshTokenParams{
+			Token:  refreshToken,
+			UserID: dbUser.ID,
+		}
+		_, err = cfg.dbQueries.CreateRefreshToken(context.Background(), refreshTokenParams)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't save refresh token", err)
+		}
+
 		respondWithJSON(w, http.StatusOK, User{
-			ID:        dbUser.ID,
-			CreatedAt: dbUser.CreatedAt,
-			UpdatedAt: dbUser.UpdatedAt,
-			Email:     dbUser.Email,
-			Token:     token,
+			ID:           dbUser.ID,
+			CreatedAt:    dbUser.CreatedAt,
+			UpdatedAt:    dbUser.UpdatedAt,
+			Email:        dbUser.Email,
+			Token:        token,
+			RefreshToken: refreshToken,
 		})
 	} else {
 		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password", errors.New("Incorrect email or password"))
 	}
+}
+
+func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request) {
+	refreshToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "No Refresh Token", errors.New("No Refresh Token"))
+	}
+
+	refreshTokenDB, err := cfg.dbQueries.GetRefreshToken(context.Background(), refreshToken)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Token not found", errors.New("Token not found"))
+	}
+
+	if refreshTokenDB.RevokedAt.Valid {
+		respondWithError(w, http.StatusUnauthorized, "Token revoked", errors.New("Token revoked"))
+	}
+
+	if refreshTokenDB.ExpiresAt.Before(time.Now()) {
+		respondWithError(w, http.StatusUnauthorized, "Token expired", errors.New("Token expired"))
+	}
+
+	type refreshTokenRes struct {
+		Token string `json:"token"`
+	}
+	newToken, err := auth.MakeJWT(refreshTokenDB.UserID, cfg.secret, time.Duration(1)*time.Hour)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "New Token could not be generated", err)
+	}
+	respondWithJSON(w, http.StatusOK, refreshTokenRes{Token: newToken})
+}
+
+func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request) {
+	refreshToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "No Refresh Token", errors.New("No Refresh Token"))
+	}
+
+	err = cfg.dbQueries.RevokeToken(context.Background(), refreshToken)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Refresh token not found", errors.New("Refresh token not found"))
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
