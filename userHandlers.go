@@ -46,6 +46,7 @@ func (cfg *apiConfig) addUserHandler(w http.ResponseWriter, r *http.Request) {
 	email, hashedPw, err := getRequestUserData(r)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Could not get params", err)
+		return
 	}
 	userParams := database.CreateUserParams{
 		Email:          email,
@@ -100,11 +101,13 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 		token, err := auth.MakeJWT(dbUser.ID, cfg.secret, expirationDuration)
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Couldn't generate JWT", err)
+			return
 		}
 
 		refreshToken, err := auth.MakeRefreshToken()
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Couldn't generate refresh token", err)
+			return
 		}
 
 		refreshTokenParams := database.CreateRefreshTokenParams{
@@ -114,6 +117,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 		_, err = cfg.dbQueries.CreateRefreshToken(context.Background(), refreshTokenParams)
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Couldn't save refresh token", err)
+			return
 		}
 
 		respondWithJSON(w, http.StatusOK, User{
@@ -133,19 +137,23 @@ func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	refreshToken, err := auth.GetBearerToken(r.Header)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "No Refresh Token", errors.New("No Refresh Token"))
+		return
 	}
 
 	refreshTokenDB, err := cfg.dbQueries.GetRefreshToken(context.Background(), refreshToken)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Token not found", errors.New("Token not found"))
+		return
 	}
 
 	if refreshTokenDB.RevokedAt.Valid {
 		respondWithError(w, http.StatusUnauthorized, "Token revoked", errors.New("Token revoked"))
+		return
 	}
 
 	if refreshTokenDB.ExpiresAt.Before(time.Now()) {
 		respondWithError(w, http.StatusUnauthorized, "Token expired", errors.New("Token expired"))
+		return
 	}
 
 	type refreshTokenRes struct {
@@ -154,6 +162,7 @@ func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	newToken, err := auth.MakeJWT(refreshTokenDB.UserID, cfg.secret, time.Duration(1)*time.Hour)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "New Token could not be generated", err)
+		return
 	}
 	respondWithJSON(w, http.StatusOK, refreshTokenRes{Token: newToken})
 }
@@ -162,11 +171,13 @@ func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request) {
 	refreshToken, err := auth.GetBearerToken(r.Header)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "No Refresh Token", errors.New("No Refresh Token"))
+		return
 	}
 
 	err = cfg.dbQueries.RevokeToken(context.Background(), refreshToken)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Refresh token not found", errors.New("Refresh token not found"))
+		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -175,17 +186,20 @@ func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) updateUserHandler(w http.ResponseWriter, r *http.Request) {
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Token not found", errors.New("Token not found"))
+		respondWithError(w, http.StatusUnauthorized, "Token not found", err)
+		return
 	}
 
 	uuid, err := auth.ValidateJWT(token, cfg.secret)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Invalid token", err)
+		return
 	}
 
 	email, hashedPw, err := getRequestUserData(r)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Could not get params", err)
+		return
 	}
 	userParams := database.UpdateUserParams{
 		Email:          email,
@@ -196,6 +210,7 @@ func (cfg *apiConfig) updateUserHandler(w http.ResponseWriter, r *http.Request) 
 	dbUser, err := cfg.dbQueries.UpdateUser(context.Background(), userParams)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error updating user", err)
+		return
 	}
 
 	user := User{
