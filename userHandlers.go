@@ -21,7 +21,7 @@ type User struct {
 	RefreshToken string    `json:"refresh_token"`
 }
 
-func (cfg *apiConfig) addUserHandler(w http.ResponseWriter, r *http.Request) {
+func getRequestUserData(r *http.Request) (email string, hashedPw string, err error) {
 	type parameters struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -29,21 +29,26 @@ func (cfg *apiConfig) addUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Couldn't decode parameters", err)
-		return
+		return "", "", err
 	}
 
-	hashedPw, err := auth.HashPassword(params.Password)
-
+	hashedPw, err = auth.HashPassword(params.Password)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't create hash for password", err)
-		return
+		return "", "", err
 	}
 
+	return params.Email, hashedPw, nil
+}
+
+func (cfg *apiConfig) addUserHandler(w http.ResponseWriter, r *http.Request) {
+	email, hashedPw, err := getRequestUserData(r)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Could not get params", err)
+	}
 	userParams := database.CreateUserParams{
-		Email:          params.Email,
+		Email:          email,
 		HashedPassword: hashedPw,
 	}
 
@@ -165,4 +170,39 @@ func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (cfg *apiConfig) updateUserHandler(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Token not found", errors.New("Token not found"))
+	}
+
+	uuid, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Invalid token", err)
+	}
+
+	email, hashedPw, err := getRequestUserData(r)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Could not get params", err)
+	}
+	userParams := database.UpdateUserParams{
+		Email:          email,
+		HashedPassword: hashedPw,
+		ID:             uuid,
+	}
+
+	dbUser, err := cfg.dbQueries.UpdateUser(context.Background(), userParams)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error updating user", err)
+	}
+
+	user := User{
+		ID:        dbUser.ID,
+		CreatedAt: dbUser.CreatedAt,
+		UpdatedAt: dbUser.UpdatedAt,
+		Email:     dbUser.Email,
+	}
+	respondWithJSON(w, http.StatusOK, user)
 }

@@ -24,12 +24,12 @@ func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request)
 
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "not logged in", err)
+		respondWithError(w, http.StatusUnauthorized, "Not logged in", err)
 	}
 
 	uuid, err := auth.ValidateJWT(token, cfg.secret)
 	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "invalid token", err)
+		respondWithError(w, http.StatusUnauthorized, "Invalid token", err)
 	}
 	type parameters struct {
 		Body string `json:"body"`
