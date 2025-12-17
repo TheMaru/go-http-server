@@ -25,3 +25,6 @@ sqlc generate
 
 Before first start copy the .env.example file to .env and fill in the variables
 
+## API documentation
+
+The Documentation for the API can be found [in the doc folder](/docs/api.md)
