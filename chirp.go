@@ -74,7 +74,20 @@ func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
-	chirpsFromDB, err := cfg.dbQueries.GetChirpsAsc(context.Background())
+	queryParamString := r.URL.Query().Get("author_id")
+
+	var chirpsFromDB []database.Chirp
+	var err error
+
+	if queryParamString == "" {
+		chirpsFromDB, err = cfg.dbQueries.GetChirpsAsc(context.Background())
+	} else {
+		userId, err := uuid.Parse(r.URL.Query().Get("author_id"))
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "Author param malformed", err)
+		}
+		chirpsFromDB, err = cfg.dbQueries.GetChirpsByAuthor(context.Background(), userId)
+	}
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Chirps could not be loaded", err)
 		return
