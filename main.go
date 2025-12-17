@@ -26,6 +26,7 @@ func main() {
 	apiCfg := apiConfig{
 		dbQueries: database.New(db),
 		secret:    os.Getenv("SECRET"),
+		polkaKey:  os.Getenv("POLKA_KEY"),
 	}
 
 	server := &http.Server{

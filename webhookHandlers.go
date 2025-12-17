@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/TheMaru/go-http-server/internal/auth"
 	"github.com/google/uuid"
 )
 
@@ -16,9 +17,15 @@ type polkaRequest struct {
 }
 
 func (cfg *apiConfig) polkaWebhookHandler(w http.ResponseWriter, r *http.Request) {
+	key, err := auth.GetAPIKey(r.Header)
+	if err != nil || key != cfg.polkaKey {
+		respondWithError(w, http.StatusUnauthorized, "Not authorized", err)
+		return
+	}
+
 	decoder := json.NewDecoder(r.Body)
 	requestParams := polkaRequest{}
-	err := decoder.Decode(&requestParams)
+	err = decoder.Decode(&requestParams)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Couln't decode parameters", err)
 		return

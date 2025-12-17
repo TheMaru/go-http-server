@@ -93,3 +93,23 @@ func MakeRefreshToken() (string, error) {
 	}
 	return hex.EncodeToString(key), nil
 }
+
+// TODO: Nearly identical with GetBearerToken, maybe refactor
+func GetAPIKey(headers http.Header) (string, error) {
+	noApiKeyError := errors.New("no api key")
+	authHeader := headers.Get("Authorization")
+	if authHeader == "" {
+		return "", noApiKeyError
+	}
+
+	parts := strings.Fields(authHeader)
+	if len(parts) != 2 {
+		return "", noApiKeyError
+	}
+
+	if !strings.EqualFold(parts[0], "ApiKey") {
+		return "", noApiKeyError
+	}
+
+	return parts[1], nil
+}
